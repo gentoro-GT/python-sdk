@@ -1,28 +1,30 @@
-from typing import List, Dict
-import sys
-import os
-
-# Add the parent directory of `Gentoro` to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..","..")))
-
-from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers  # Import from your SDK module
-
 import unittest
+import os
+from dotenv import load_dotenv
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..","..")))
+from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+
+# Load environment variables from the `.env` file inside the `tests/` folder
+dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(dotenv_path)
+
 
 class TestGentoroSDK(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Setup SDK configuration before running tests"""
         cls.config = SdkConfig(
-            base_url="https://stage.gentoro.com",  # Updated base URL
-            auth_mod_base_url="https://stage.gentoro.com/auth",  # Update if required
-            api_key="ffab9d795347384aa9e20571436ff44c95beba518f311e12b67b278fa6d73ffb",  # Replace with a valid API key
-            provider=Providers.OPENAI,  # Change as per requirement
+            base_url=os.getenv("GENTORO_BASE_URL"),
+            auth_mod_base_url=os.getenv("GENTORO_AUTH_MOD_BASE_URL"),
+            api_key=os.getenv("GENTORO_API_KEY"),
+            provider=Providers.OPENAI,
             authentication=Authentication(scope=AuthenticationScope.API_KEY)
         )
 
         cls.gro_instance = Gentoro(cls.config)
-        cls.bridge_uid = "7MuRXMmQUVru8IWJTLorCc"  # Example bridge UID
+        cls.bridge_uid = os.getenv("GENTORO_BRIDGE_UID")
+
 
     def test_get_tools(self):
         """Test fetching available tools with dynamic bridge UID"""
@@ -32,30 +34,27 @@ class TestGentoroSDK(unittest.TestCase):
         self.assertIsNotNone(tools, "Failed to fetch tools")
         print("Fetched tools:", tools)
 
+
     def test_run_tools(self):
         """Test executing tools"""
         print("\nRunning run_tools test...")
 
-        tool_calls = {
-            "messages": [],
-            "metadata": [],
-            "toolCalls": [
-                {
-                    "id": "1",
-                    "type": "function",
-                    "details": {
-                        "name": "say_hi",
-                        "arguments": "{}"
-                    }
+        tool_calls = [
+            {
+                "id": "1",
+                "type": "function",
+                "details": {
+                    "name": "say_hi",
+                    "arguments": {"name": "Mohit"}
                 }
-            ]
-        }
-
+            }
+        ]
 
         result = self.gro_instance.run_tools(self.bridge_uid, messages=[], tool_calls=tool_calls)
 
         self.assertIsNotNone(result, "Failed to execute tools")
         print("Tool execution result:", result)
+
 
 if __name__ == "__main__":
     unittest.main()

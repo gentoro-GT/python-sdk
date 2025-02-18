@@ -9,8 +9,8 @@ def read_requirements():
 setuptools.setup(
     name="Gentoro",
     version="0.1.0",
-    author="Gentoro",
-    author_email="",
+    author="Gentoro R&D",
+    author_email="communitysupport@gentoro.com",
     description="Gentoro Python SDK for AI tool execution and authentication",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -22,7 +22,7 @@ To obtain an API Key, register at **Gentoro's API Portal**.
 When initializing the SDK, provide the configuration as follows:
 
 ```python
-from Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
 
 config = SdkConfig(
     api_key="your_api_key_here",  # Your Gentoro API Key
