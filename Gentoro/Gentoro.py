@@ -124,6 +124,23 @@ class Gentoro:
             ]
         return tools
 
+    def as_internal_tool_calls(self, messages: Dict) -> Optional[List[Dict]]:
+        if self.config.provider == Providers.OPENAI:
+            if "choices" in messages and messages["choices"][0].get("finish_reason") == "tool_calls":
+                tool_calls = messages["choices"][0].get("message", {}).get("tool_calls", [])
+                return [
+                    {
+                        "id": call["id"],
+                        "type": call["type"],
+                        "details": {
+                            "name": call["function"]["name"],
+                            "arguments": call["function"]["arguments"]
+                        }
+                    }
+                    for call in tool_calls
+                ]
+        return None
+
 
     def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: List[Dict]):
         try:
@@ -134,6 +151,10 @@ class Gentoro:
                 "Accept": "application/json",
                 "User-Agent": "Python-SDK"
             }
+
+            extracted_tool_calls = self.as_internal_tool_calls(messages)  # <-- Calling as_internal_tool_calls here
+            if extracted_tool_calls:
+                tool_calls.extend(extracted_tool_calls)
 
             for tool_call in tool_calls:
                 if "details" in tool_call and "arguments" in tool_call["details"]:

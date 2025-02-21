@@ -10,7 +10,7 @@ This SDK is compatible with **Python >= 3.7**.
 To get started with the SDK, install it using **pip**:
 
 ```bash
-pip install -e .
+pip install Gentoro==0.1.2
 ```
 
 ## Authentication
@@ -22,7 +22,7 @@ To obtain an API Key, register at **Gentoro's API Portal**.
 When initializing the SDK, provide the configuration as follows:
 
 ```python
-from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+from Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
 
 config = SdkConfig(
     api_key="your_api_key_here",  # Your Gentoro API Key
