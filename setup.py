@@ -8,13 +8,13 @@ def read_requirements():
 
 setuptools.setup(
     name="Gentoro",
-    version="0.1.0",
+    version="0.1.1",
     author="Gentoro R&D",
     author_email="communitysupport@gentoro.com",
     description="Gentoro Python SDK for AI tool execution and authentication",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/gentoro-GT/python-sdk",  # Need Repo URL here
+    url="https://github.com/gentoro-GT/python-sdk",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
