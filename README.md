@@ -26,8 +26,8 @@ from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationSc
 
 config = SdkConfig(
     api_key="your_api_key_here",  # Your Gentoro API Key
-    base_url="https://stage.gentoro.com",  # Base URL where the Gentoro API is hosted
-    auth_mod_base_url="https://stage.gentoro.com/auth",  # Authentication module base URL
+    base_url="https://gentoro.com",  # Base URL where the Gentoro API is hosted
+    auth_mod_base_url="https://gentoro.com/auth",  # Authentication module base URL
     provider=Providers.OPENAI,
     authentication=Authentication(scope=AuthenticationScope.API_KEY)
 )
