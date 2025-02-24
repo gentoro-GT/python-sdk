@@ -11,6 +11,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    env:
+      GENTORO_API_KEY: ${{ secrets.GENTORO_API_KEY }}
+      GENTORO_BASE_URL: ${{ secrets.GENTORO_BASE_URL }}
+      GENTORO_AUTH_MOD_BASE_URL: ${{ secrets.GENTORO_AUTH_MOD_BASE_URL }}
+      GENTORO_BRIDGE_UID: ${{ secrets.GENTORO_BRIDGE_UID }}
 
     steps:
     - name: Checkout Repository
