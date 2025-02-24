@@ -36,13 +36,3 @@ jobs:
     - name: Run Tests
       run: |
         python -m unittest discover tests
-
-    - name: Build Package
-      run: |
-        python setup.py sdist bdist_wheel
-
-    - name: Upload Package Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-package
-        path: dist/
