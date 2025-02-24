@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: dev
     
     env:
       GENTORO_API_KEY: ${{ secrets.GENTORO_API_KEY }}
