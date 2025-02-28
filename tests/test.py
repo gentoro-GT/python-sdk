@@ -18,7 +18,7 @@ class TestGentoroSDK(unittest.TestCase):
             base_url=os.getenv("GENTORO_BASE_URL"),
             auth_mod_base_url=os.getenv("GENTORO_AUTH_MOD_BASE_URL"),
             api_key=os.getenv("GENTORO_API_KEY"),
-            provider=Providers.OPENAI,
+            provider=Providers.GENTORO,
             authentication=Authentication(scope=AuthenticationScope.API_KEY)
         )
 
@@ -54,6 +54,17 @@ class TestGentoroSDK(unittest.TestCase):
 
         self.assertIsNotNone(result, "Failed to execute tools")
         print("Tool execution result:", result)
+
+    def test_run_tool_natively(self):
+        """Test executing a tool natively using run_tool_natively"""
+        print("\nRunning run_tool_natively test...")
+
+        tool_name = "say_hi"
+        params = {"name": "Mohit"}
+        result = self.gro_instance.run_tool_natively(self.bridge_uid, tool_name, params)
+
+        self.assertIsNotNone(result, "Failed to execute tool natively")
+        print("Native tool execution result:", result)
 
 
 if __name__ == "__main__":

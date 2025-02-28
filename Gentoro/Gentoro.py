@@ -1,15 +1,9 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 from enum import Enum
 import requests
 import json
-
-
-class Providers(str, Enum):
-    OPENAI = 'openai'
-    ANTHROPIC = 'anthropic'
-    OPENAI_ASSISTANTS = 'openai_assistants'
-    VERCEL = 'vercel'
-    GENTORO = 'gentoro'
+from .types import Providers, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
+from openai.types.chat import ChatCompletion
 
 
 class AuthenticationScope(str, Enum):
@@ -125,24 +119,59 @@ class Gentoro:
         return tools
 
     def as_internal_tool_calls(self, messages: Dict) -> Optional[List[Dict]]:
+        """
+        Extracts tool calls from OpenAI and Gentoro responses.
+        """
         if self.config.provider == Providers.OPENAI:
-            if "choices" in messages and messages["choices"][0].get("finish_reason") == "tool_calls":
-                tool_calls = messages["choices"][0].get("message", {}).get("tool_calls", [])
-                return [
-                    {
-                        "id": call["id"],
-                        "type": call["type"],
-                        "details": {
-                            "name": call["function"]["name"],
-                            "arguments": call["function"]["arguments"]
+            if isinstance(messages, ChatCompletion):
+                response_choice = messages.choices[0]
+                response_message = response_choice.message
+                if response_choice.finish_reason == "tool_calls" and response_message.tool_calls:
+                    tool_calls = response_message.tool_calls
+                    if not tool_calls:
+                        return []
+
+                    return [
+                        {
+                            "id": call.id,
+                            "type": call.type,
+                            "details": {
+                                "name": call.function.name,
+                                "arguments": call.function.arguments
+                            }
                         }
-                    }
-                    for call in tool_calls
-                ]
+                        for call in tool_calls  # Corrected iteration over tool_calls
+                    ]
+            else:
+                return messages  # Removed unnecessary result variable
+        elif self.config.provider == Providers.GENTORO:
+            return messages if isinstance(messages, list) else []
+
         return None
 
 
-    def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: List[Dict]):
+    def run_tool_natively(self, bridge_uid: str, tool_name: str, params: Optional[Dict] = None):
+        """
+        Executes a tool natively by directly calling runTools with the specified tool.
+        """
+        request_content = {
+            "id": "native",
+            "type": "function",
+            "details": {
+                "name": tool_name,
+                "arguments": json.dumps(params) if params is not None else "{}"
+            }
+        }
+
+        try:
+            result = self.run_tools(bridge_uid, None, [request_content])
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error running tool natively: {e}")
+            return None
+
+
+    def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: Union[List[Dict], ChatCompletion]):
         try:
             request_uri = f"/api/bornio/v1/inference/{bridge_uid}/runtools"
 
@@ -151,15 +180,30 @@ class Gentoro:
                 "Accept": "application/json",
                 "User-Agent": "Python-SDK"
             }
-
-            extracted_tool_calls = self.as_internal_tool_calls(messages)  # <-- Calling as_internal_tool_calls here
+            if isinstance(tool_calls, ChatCompletion):
+                extracted_tool_calls = self.as_internal_tool_calls(tool_calls)
+                if extracted_tool_calls is None:
+                    print("No valid tool calls extracted from OpenAI response.")
+                    return None
+            elif not isinstance(tool_calls, ChatCompletion):
+                extracted_tool_calls = self.as_internal_tool_calls(tool_calls)
             if extracted_tool_calls:
+                if not isinstance(tool_calls, list):
+                    tool_calls = list(tool_calls) if tool_calls else []
                 tool_calls.extend(extracted_tool_calls)
 
-            for tool_call in tool_calls:
-                if "details" in tool_call and "arguments" in tool_call["details"]:
-                    tool_call["details"]["arguments"] = json.dumps(tool_call["details"].get("arguments", {}))
+            filtered_tool_calls = []
 
+            for tool_call in tool_calls:
+                if isinstance(tool_call, dict) and "details" in tool_call and isinstance(tool_call["details"], dict):
+                    # Ensure arguments exist and are in dictionary format before serializing
+                    if "arguments" in tool_call["details"]:
+                        if isinstance(tool_call["details"]["arguments"], dict):
+                            tool_call["details"]["arguments"] = json.dumps(
+                                tool_call["details"]["arguments"])  # ✅ Ensure JSON format
+
+                    filtered_tool_calls.append(tool_call)  # ✅ Append only valid tool calls
+            tool_calls = filtered_tool_calls
             request_content = {
                 "context": {"bridgeUid": bridge_uid, "messages": messages or []},
                 "metadata": self.metadata,
@@ -171,12 +215,11 @@ class Gentoro:
             }
 
             result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
-
             if result and "results" in result:
                 return result["results"]
             return None
         except Exception as e:
-            print(f"Error running tools: {e}")
+            print(f"Error running tools: {e},tool_calls:{tool_calls}")
             return None
 
 
