@@ -16,10 +16,8 @@ class TestGentoroSDK(unittest.TestCase):
         """Setup SDK configuration before running tests"""
         cls.config = SdkConfig(
             base_url=os.getenv("GENTORO_BASE_URL"),
-            auth_mod_base_url=os.getenv("GENTORO_AUTH_MOD_BASE_URL"),
             api_key=os.getenv("GENTORO_API_KEY"),
             provider=Providers.GENTORO,
-            authentication=Authentication(scope=AuthenticationScope.API_KEY)
         )
 
         cls.gro_instance = Gentoro(cls.config)

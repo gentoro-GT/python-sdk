@@ -10,7 +10,7 @@ This SDK is compatible with **Python >= 3.7**.
 To get started with the SDK, install it using **pip**:
 
 ```bash
-pip install Gentoro==0.1.2
+pip install Gentoro==0.1.6
 ```
 
 ## Authentication
@@ -22,34 +22,54 @@ To obtain an API Key, register at **Gentoro's API Portal**.
 When initializing the SDK, provide the configuration as follows:
 
 ```python
+import os
+from dotenv import load_dotenv
 from Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
 
+# Load environment variables
+load_dotenv()
+
+# Initialize SDK configuration
 config = SdkConfig(
-    api_key="your_api_key_here",  # Your Gentoro API Key
-    base_url="https://gentoro.com",  # Base URL where the Gentoro API is hosted
-    auth_mod_base_url="https://gentoro.com/auth",  # Authentication module base URL
-    provider=Providers.OPENAI,
+    base_url=os.getenv("GENTORO_BASE_URL"),
+    auth_mod_base_url=os.getenv("GENTORO_AUTH_MOD_BASE_URL"),
+    api_key=os.getenv("GENTORO_API_KEY"),
+    provider=Providers.GENTORO,
     authentication=Authentication(scope=AuthenticationScope.API_KEY)
 )
 
+# Create an instance of the SDK
 gentoro_instance = Gentoro(config)
-bridge_uid = "BRIDGE_ID"  # Example bridge UID
+bridge_uid = os.getenv("GENTORO_BRIDGE_UID")
 
-# Fetch tools
-tools = gentoro_instance.get_tools(bridge_uid)
-print("Fetched tools:", tools)
+# Fetch available tools
+def get_tools():
+    tools = gentoro_instance.get_tools(bridge_uid)
+    print("Available tools:", tools)
+    return tools
 
-# Execute a tool
-tool_calls = [
-    {
-        "id": "tool_123",
-        "type": "function",
-        "details": {"name": "example_tool", "arguments": "{}"}
-    }
-]
-
-execution_result = gentoro_instance.run_tools(bridge_uid, messages=[], tool_calls=tool_calls)
-print("Execution result:", execution_result)
+# Run a tool
+def run_tool():
+    tool_calls = [
+        {
+            "id": "1",
+            "type": "function",
+            "details": {
+                "name": "say_hi",
+                "arguments": {"name": "User_name"}
+            }
+        }
+    ]
+    result = gentoro_instance.run_tools(bridge_uid, messages=[], tool_calls=tool_calls)
+    print("Tool execution result:", result)
+    return result
+if __name__ == "__main__":
+    print("Fetching available tools...")
+    get_tools()
+    
+    print("\nExecuting tool...")
+    run_tool()
+    
 ```
 
 ## SDK Services

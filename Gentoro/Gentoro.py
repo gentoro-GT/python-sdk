@@ -18,18 +18,13 @@ class Authentication:
 
 
 class SdkConfig:
-    def __init__(self, base_url: str, auth_mod_base_url: str, api_key: str, provider: Providers,
-                 authentication: Authentication):
+    def __init__(self, base_url: str, api_key: str, provider: Providers):
         if not api_key:
             raise ValueError("The api_key client option must be set")
-        if not auth_mod_base_url:
-            raise ValueError("Authentication module base URL is required")
 
         self.base_url = base_url
-        self.auth_mod_base_url = auth_mod_base_url
         self.api_key = api_key
         self.provider = provider
-        self.authentication = authentication
 
 
 class Transport:
@@ -62,8 +57,6 @@ class Transport:
 class Gentoro:
     def __init__(self, config: SdkConfig, metadata: List[Dict] = None):
         self.transport = Transport(config)
-        self.auth_mod_uri = config.auth_mod_base_url
-        self.authentication = config.authentication
         self.metadata = metadata or []
         self.auth_request_checker_id = None
         self.config = config
@@ -207,10 +200,6 @@ class Gentoro:
             request_content = {
                 "context": {"bridgeUid": bridge_uid, "messages": messages or []},
                 "metadata": self.metadata,
-                "authentication": {
-                    "scope": self.authentication.scope.value,
-                    "metadata": self.authentication.metadata if self.authentication.metadata else None
-                },
                 "toolCalls": tool_calls
             }
 
