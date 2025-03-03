@@ -1,2 +1,3 @@
-from .Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+from .Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope
+from .GentoroTypes import Providers
 

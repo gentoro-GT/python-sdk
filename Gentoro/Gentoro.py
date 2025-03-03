@@ -1,9 +1,11 @@
 from typing import List, Optional, Dict, Union
 from enum import Enum
 import requests
+import os
 import json
-from .types import Providers, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
-from openai.types.chat import ChatCompletion
+import traceback
+from .GentoroTypes import Providers, ExecResultType, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
+from openai.types.chat import ChatCompletion, ChatCompletionToolMessageParam, ChatCompletionContentPartTextParam
 
 
 class AuthenticationScope(str, Enum):
@@ -18,7 +20,14 @@ class Authentication:
 
 
 class SdkConfig:
-    def __init__(self, base_url: str, api_key: str, provider: Providers):
+    def __init__(self, base_url: str = None, api_key: str = None, provider: Providers = Providers.GENTORO):
+        # If base_url or api_key is not provided, try to get them from the environment
+        if not base_url:
+            base_url = os.getenv("GENTORO_BASE_URL")
+        if not api_key:
+            api_key = os.getenv("GENTORO_API_KEY")
+
+        # If api_key is still not set after checking the environment, raise an error
         if not api_key:
             raise ValueError("The api_key client option must be set")
 
@@ -67,7 +76,7 @@ class Gentoro:
 
     def get_tools(self, bridge_uid: str, messages: Optional[List[Dict]] = None):
         try:
-            request_uri = f"/api/bornio/v1/inference/{bridge_uid}/retrievetools"
+            request_uri = f"/bornio/v1/inference/{bridge_uid}/retrievetools"
 
             headers = {
                 "X-API-Key": self.config.api_key,
@@ -164,15 +173,19 @@ class Gentoro:
             return None
 
 
-    def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: Union[List[Dict], ChatCompletion]):
+    def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: Union[List[Dict], ChatCompletion]) -> Union[List[Dict], List[ChatCompletionToolMessageParam]]:
         try:
-            request_uri = f"/api/bornio/v1/inference/{bridge_uid}/runtools"
+            request_uri = f"/bornio/v1/inference/{bridge_uid}/runtools"
 
             headers = {
                 "X-API-Key": self.config.api_key,
                 "Accept": "application/json",
                 "User-Agent": "Python-SDK"
             }
+
+            # Keep the original input, so we can append at the end.
+            _tool_calls = tool_calls
+
             if isinstance(tool_calls, ChatCompletion):
                 extracted_tool_calls = self.as_internal_tool_calls(tool_calls)
                 if extracted_tool_calls is None:
@@ -204,13 +217,41 @@ class Gentoro:
             }
 
             result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
-            if result and "results" in result:
-                return result["results"]
-            return None
+            return self.as_provider_tool_call_results(_tool_calls, result)
         except Exception as e:
-            print(f"Error running tools: {e},tool_calls:{tool_calls}")
-            return None
+            raise RuntimeError(f"Error message: {e}\nStack Trace:\n{traceback.format_exc()}")
 
+    def as_provider_tool_call_results(self, tool_calls: Union[List[Dict], ChatCompletion], results: Dict) -> Union[List[Dict], List[ChatCompletionToolMessageParam]]:
+        """
+        Build tool call results from OpenAI and Gentoro responses.
+        """
+        messages = []
+        if self.config.provider == Providers.OPENAI:
+            if isinstance(tool_calls, ChatCompletion):
+                messages.append( tool_calls.choices[0].message )
+
+            for result in results["results"]:
+                if result["type"] == ExecResultType.EXEC_OUTPUT:
+                    messages.append(ChatCompletionToolMessageParam(
+                        role="tool",
+                        tool_call_id=result["toolCallId"],
+                        content = result["data"]["content"]
+                    ))
+                elif result["type"] == ExecResultType.ERROR:
+                    messages.append(ChatCompletionToolMessageParam(
+                        role="tool",
+                        tool_call_id=result["toolCallId"],
+                        content="Failed while attempting to execute tool:\n```" + result["data"].message + "```"
+                    ))
+                else:
+                    raise ValueError("Unknown result type: " + result["type"])
+
+        elif self.config.provider == Providers.GENTORO:
+            if isinstance(tool_calls, list):
+                messages.extend(tool_calls)
+            messages.extend(results["results"])
+
+        return messages
 
     def add_event_listener(self, event_type: str, handler):
         try:
