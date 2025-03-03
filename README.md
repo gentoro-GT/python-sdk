@@ -24,7 +24,7 @@ When initializing the SDK, provide the configuration as follows:
 ```python
 import os
 from dotenv import load_dotenv
-from Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+from Gentoro import Gentoro, SdkConfig, Providers
 
 # Load environment variables
 load_dotenv()
@@ -32,10 +32,8 @@ load_dotenv()
 # Initialize SDK configuration
 config = SdkConfig(
     base_url=os.getenv("GENTORO_BASE_URL"),
-    auth_mod_base_url=os.getenv("GENTORO_AUTH_MOD_BASE_URL"),
     api_key=os.getenv("GENTORO_API_KEY"),
     provider=Providers.GENTORO,
-    authentication=Authentication(scope=AuthenticationScope.API_KEY)
 )
 
 # Create an instance of the SDK
