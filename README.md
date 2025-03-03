@@ -33,7 +33,7 @@ load_dotenv()
 config = SdkConfig(
     base_url=os.getenv("GENTORO_BASE_URL"),
     api_key=os.getenv("GENTORO_API_KEY"),
-    provider=Providers.GENTORO,
+    provider=Providers.OPENAI,
 )
 
 # Create an instance of the SDK
