@@ -2,9 +2,9 @@ from typing import List, Optional, Dict, Union
 from enum import Enum
 import requests
 import json
-from .types import Providers, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
-from openai.types.chat import ChatCompletion
-
+from .GentoroTypes import Providers, ExecResultType, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
+from openai.types.chat import ChatCompletion, ChatCompletionToolMessageParam, ChatCompletionContentPartTextParam, ChatCompletionMessage
+import os
 
 class AuthenticationScope(str, Enum):
     METADATA = 'metadata'
@@ -18,7 +18,13 @@ class Authentication:
 
 
 class SdkConfig:
-    def __init__(self, base_url: str, api_key: str, provider: Providers):
+    def __init__(self, base_url: str = None, api_key: str = None, provider: Providers = Providers.GENTORO):
+        # If base_url or api_key is not provided, try to get them from the environment
+        if not base_url:
+            base_url = os.getenv("GENTORO_BASE_URL")
+        if not api_key:
+            api_key = os.getenv("GENTORO_API_KEY")
+
         if not api_key:
             raise ValueError("The api_key client option must be set")
 
@@ -67,7 +73,7 @@ class Gentoro:
 
     def get_tools(self, bridge_uid: str, messages: Optional[List[Dict]] = None):
         try:
-            request_uri = f"/api/bornio/v1/inference/{bridge_uid}/retrievetools"
+            request_uri = f"/bornio/v1/inference/{bridge_uid}/retrievetools"
 
             headers = {
                 "X-API-Key": self.config.api_key,
@@ -166,18 +172,20 @@ class Gentoro:
 
     def run_tools(self, bridge_uid: str, messages: Optional[List[Dict]], tool_calls: Union[List[Dict], ChatCompletion]):
         try:
-            request_uri = f"/api/bornio/v1/inference/{bridge_uid}/runtools"
+            request_uri = f"/bornio/v1/inference/{bridge_uid}/runtools"
 
             headers = {
                 "X-API-Key": self.config.api_key,
                 "Accept": "application/json",
                 "User-Agent": "Python-SDK"
             }
+            _tool_calls = tool_calls
             if isinstance(tool_calls, ChatCompletion):
                 extracted_tool_calls = self.as_internal_tool_calls(tool_calls)
                 if extracted_tool_calls is None:
                     print("No valid tool calls extracted from OpenAI response.")
                     return None
+                tool_calls = extracted_tool_calls
             elif not isinstance(tool_calls, ChatCompletion):
                 extracted_tool_calls = self.as_internal_tool_calls(tool_calls)
             if extracted_tool_calls:
@@ -193,24 +201,116 @@ class Gentoro:
                     if "arguments" in tool_call["details"]:
                         if isinstance(tool_call["details"]["arguments"], dict):
                             tool_call["details"]["arguments"] = json.dumps(
-                                tool_call["details"]["arguments"])  # ✅ Ensure JSON format
+                                tool_call["details"]["arguments"])
 
-                    filtered_tool_calls.append(tool_call)  # ✅ Append only valid tool calls
+                    filtered_tool_calls.append(tool_call)
             tool_calls = filtered_tool_calls
+            # Validate message sequence before sending request
+            # Ensure assistant message with tool_calls exists
+            if not messages or not any("tool_calls" in msg for msg in messages if isinstance(msg, dict)):
+                if isinstance(tool_calls, list) and tool_calls:
+                    # Ensure tool_calls are correctly structured
+                    corrected_tool_calls = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["details"]["name"],
+                                "arguments": tc["details"]["arguments"]
+                            }
+                        }
+                        for tc in tool_calls
+                    ]
+
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": corrected_tool_calls
+                    }
+
+            # Prepare request payload
             request_content = {
-                "context": {"bridgeUid": bridge_uid, "messages": messages or []},
+                "context": {"bridgeUid": bridge_uid, "messages": messages},
                 "metadata": self.metadata,
                 "toolCalls": tool_calls
             }
 
+            # Send request
             result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
-            if result and "results" in result:
-                return result["results"]
-            return None
+            if result is None:
+                print("Error: API response is None.")
+                return []
+
+            return self.as_provider_tool_call_results(_tool_calls, result)
+
+            result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
+            return self.as_provider_tool_call_results(_tool_calls, result)
+            # if result and "results" in result:
+            #     return result["results"]
+            # return None
         except Exception as e:
             print(f"Error running tools: {e},tool_calls:{tool_calls}")
             return None
 
+    def as_provider_tool_call_results(self, tool_calls: Union[List[Dict], ChatCompletion], results: Dict) -> Union[
+        List[Dict], List[ChatCompletionToolMessageParam]]:
+        """
+        Build tool call results from OpenAI and Gentoro responses.
+        """
+        messages = []
+
+        if self.config.provider == Providers.OPENAI:
+            if isinstance(tool_calls, ChatCompletion):
+                converted_message = self.convert_message_to_dict(tool_calls.choices[0].message)
+
+                # Avoid duplicate assistant messages
+                if not any(msg.get("role") == "assistant" and "tool_calls" in msg for msg in messages):
+                    messages.append(converted_message)
+
+            for result in results["results"]:
+                if result["type"] == ExecResultType.EXEC_OUTPUT:
+                    # Prevent duplicate tool responses
+                    if not any(
+                            msg["role"] == "tool" and msg["tool_call_id"] == result["toolCallId"] for msg in messages):
+                        messages.append(ChatCompletionToolMessageParam(
+                            role="tool",
+                            tool_call_id=result["toolCallId"],
+                            content=result["data"]["content"]
+                        ))
+                elif result["type"] == ExecResultType.ERROR:
+                    messages.append(ChatCompletionToolMessageParam(
+                        role="tool",
+                        tool_call_id=result["toolCallId"],
+                        content=f"Failed while attempting to execute tool:\n```{result['data']['message']}```"
+                    ))
+                else:
+                    raise ValueError(f"Unknown result type: {result['type']}")
+
+        elif self.config.provider == Providers.GENTORO:
+            if isinstance(tool_calls, list):
+                messages.extend(tool_calls)
+            messages.extend(results["results"])
+
+        return messages
+
+    def convert_message_to_dict(self, message: ChatCompletionMessage) -> Dict:
+        """Converts a ChatCompletionMessage object to a dictionary format."""
+        return {
+            "role": message.role,
+            "content": message.content,
+            "function_call": message.function_call if message.function_call else None,
+            "tool_calls": [
+                {
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": json.dumps(json.loads(tool_call.function.arguments))
+                    }
+                }
+                for tool_call in message.tool_calls
+            ] if message.tool_calls else None
+        }
 
     def add_event_listener(self, event_type: str, handler):
         try:

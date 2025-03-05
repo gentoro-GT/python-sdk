@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..","..")))
-from Gentoro.Gentoro import Gentoro, SdkConfig, Authentication, AuthenticationScope, Providers
+from Gentoro.Gentoro import Gentoro, SdkConfig, Providers
 
 # Load environment variables from the `.env` file inside the `tests/` folder
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")

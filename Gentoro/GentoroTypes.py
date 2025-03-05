@@ -24,12 +24,12 @@ class Authentication(BaseObject):
     metadata: Optional[ScopeForMetadata]
 
 class SdkConfig(BaseObject):
-    base_url: Optional[str]
-    auth_mod_base_url: Optional[str]
-    timeout_ms: Optional[int]
-    api_key: Optional[str]
-    provider: Optional[Providers]
-    authentication: Optional[Authentication]
+    base_url: Optional[str] = None
+    auth_mod_base_url: Optional[str] = None
+    timeout_ms: Optional[int] = 30000
+    api_key: Optional[str] = None
+    provider: Optional[Providers] = Providers.GENTORO
+    authentication: Optional[Authentication] = Authentication(scope=AuthenticationScope.API_KEY, metadata=None)
 
 class Request(BaseObject):
     uri: str
@@ -126,7 +126,7 @@ class RunToolsRequest(BaseObject):
     tool_calls: List[ToolCall]
 
 class ExecResultType(str, Enum):
-    EXEC_OUTPUT = 'exec_output'
+    EXEC_OUTPUT = 'output'
     ERROR = 'error'
     AUTH_REQUEST = 'auth_request'
 

@@ -4,13 +4,13 @@
 Welcome to the **Gentoro Python SDK** documentation. This guide will help you integrate and use the SDK in your project.
 
 ## Supported Python Versions
-This SDK is compatible with **Python >= 3.7**.
+This SDK is compatible with **Python >= 3.10**.
 
 ## Installation
 To get started with the SDK, install it using **pip**:
 
 ```bash
-pip install Gentoro==0.1.6
+pip install Gentoro==0.1.7
 ```
 
 ## Authentication
@@ -23,50 +23,41 @@ When initializing the SDK, provide the configuration as follows:
 
 ```python
 import os
-from dotenv import load_dotenv
 from Gentoro import Gentoro, SdkConfig, Providers
+from dotenv import load_dotenv
+import openai
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-# Initialize SDK configuration
-config = SdkConfig(
-    base_url=os.getenv("GENTORO_BASE_URL"),
-    api_key=os.getenv("GENTORO_API_KEY"),
-    provider=Providers.OPENAI,
+
+# Initialize the Gentoro and OpenAI instances
+_gentoro = Gentoro(SdkConfig(provider=Providers.OPENAI))
+_openAI = openai.OpenAI()
+
+# Define the OpenAI model we want to use
+MODEL = 'gpt-4o-mini'
+
+# Initial messages to OpenAI
+messages = [{"role": "user", "content": "list 10 of my slack channels"}]
+
+# Send message, along with available tools to OpenAI
+openai_response = _openAI.chat.completions.create(
+    model=MODEL,
+    messages=messages,
+    tools=_gentoro.get_tools(os.getenv("GENTORO_BRIDGE_UID"), messages)
+)
+messages += _gentoro.run_tools(os.getenv("GENTORO_BRIDGE_UID"), messages, openai_response)
+
+# Continue with communication with OpenAI
+response = _openAI.chat.completions.create(
+  model=MODEL,
+  messages=messages,
+  tools=_gentoro.get_tools(os.getenv("GENTORO_BRIDGE_UID"), messages)
 )
 
-# Create an instance of the SDK
-gentoro_instance = Gentoro(config)
-bridge_uid = os.getenv("GENTORO_BRIDGE_UID")
-
-# Fetch available tools
-def get_tools():
-    tools = gentoro_instance.get_tools(bridge_uid)
-    print("Available tools:", tools)
-    return tools
-
-# Run a tool
-def run_tool():
-    tool_calls = [
-        {
-            "id": "1",
-            "type": "function",
-            "details": {
-                "name": "say_hi",
-                "arguments": {"name": "User_name"}
-            }
-        }
-    ]
-    result = gentoro_instance.run_tools(bridge_uid, messages=[], tool_calls=tool_calls)
-    print("Tool execution result:", result)
-    return result
-if __name__ == "__main__":
-    print("Fetching available tools...")
-    get_tools()
-    
-    print("\nExecuting tool...")
-    run_tool()
+# Prints the response with the answer
+print("final response",response.choices[0].message.content)
     
 ```
 
@@ -77,7 +68,7 @@ Fetches available tools for a specific `bridge_uid`.
 
 Example usage:
 ```python
-tools = gentoro_instance.get_tools("BRIDGE_ID", messages=[])
+tools = _gentoro.get_tools("BRIDGE_ID", messages=[])
 print("Tools:", tools)
 ```
 
@@ -86,21 +77,13 @@ Executes the tools requested by the AI model.
 
 Example usage:
 ```python
-execution_result = gentoro_instance.run_tools("BRIDGE_ID", messages=[], tool_calls=tool_calls)
+execution_result = _gentoro.run_tools("BRIDGE_ID", messages=[], tool_calls=tool_calls)
 print("Execution Result:", execution_result)
 ```
 
 ## Providers
 A provider defines how the SDK should handle and generate content:
 
-```python
-class Providers(str, Enum):
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    OPENAI_ASSISTANTS = "openai_assistants"
-    VERCEL = "vercel"
-    GENTORO = "gentoro"
-```
 
 ## License
 This SDK is licensed under the **Apache-2.0 License**. See the `LICENSE` file for more details.
