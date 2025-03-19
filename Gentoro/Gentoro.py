@@ -6,16 +6,6 @@ from .GentoroTypes import Providers, ExecResultType, BaseObject, ScopeForMetadat
 from openai.types.chat import ChatCompletion, ChatCompletionToolMessageParam, ChatCompletionContentPartTextParam, ChatCompletionMessage
 import os
 
-class AuthenticationScope(str, Enum):
-    METADATA = 'metadata'
-    API_KEY = 'api_key'
-
-
-class Authentication:
-    def __init__(self, scope: AuthenticationScope, metadata: Optional[Dict] = None):
-        self.scope = scope
-        self.metadata = metadata
-
 
 class SdkConfig:
     def __init__(self, base_url: str = None, api_key: str = None, provider: Providers = Providers.GENTORO):
