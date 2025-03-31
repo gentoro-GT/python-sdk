@@ -5,8 +5,8 @@ import json
 from .GentoroTypes import Providers, ExecResultType, BaseObject, ScopeForMetadata, Request, Response, Message,Context, KeyValuePair, GetToolsRequest, FunctionParameter, FunctionParameterCollection, Function, ToolDef, GetToolsResponse, TextContent, DataType, DataValue, ArrayContent, ObjectContent, FunctionCall, ToolCall, RunToolsRequest, ExecResultType, ExecOutput, ExecError, AuthSchemaField, AuthSchema, ExecResult, RunToolsResponse, SdkError, SdkEventType, SdkEvent
 from openai.types.chat import ChatCompletion, ChatCompletionToolMessageParam, ChatCompletionContentPartTextParam, ChatCompletionMessage
 import os
-
-
+from langchain_core.messages import ToolMessage,AIMessage
+import json
 class SdkConfig:
     def __init__(self, base_url: str = None, api_key: str = None, provider: Providers = Providers.GENTORO):
         # If base_url or api_key is not provided, try to get them from the environment
@@ -105,6 +105,30 @@ class Gentoro:
                 }
                 for tool in tools
             ]
+        elif self.config.provider == Providers.LANGCHAIN:
+            tools_langchain = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["definition"]["name"],
+                        "description": tool["definition"]["description"],
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                param["name"]: {
+                                    "type": param["type"],
+                                    "description": param["description"]
+                                }
+                                for param in tool["definition"]["parameters"].get("properties", [])
+                            },
+                            "required": tool["definition"]["parameters"].get("required", []),
+                        },
+                    },
+                }
+                for tool in tools
+            ]
+            return tools_langchain
+
         return tools
 
     def as_internal_tool_calls(self, messages: Dict) -> Optional[List[Dict]]:
@@ -135,6 +159,38 @@ class Gentoro:
                 return messages  # Removed unnecessary result variable
         elif self.config.provider == Providers.GENTORO:
             return messages if isinstance(messages, list) else []
+        elif self.config.provider == Providers.LANGCHAIN:
+            # Handle LangChain-format tool call messages
+            if isinstance(messages, list):
+                for msg in messages:
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        return [
+                            {
+                                "id": call.get("id"),
+                                "type": call.get("type"),
+                                "details": {
+                                    "name": call.get("function", {}).get("name"),
+                                    "arguments": call.get("function", {}).get("arguments")
+                                }
+                            }
+                            for call in msg["tool_calls"]
+                        ]
+            elif isinstance(messages, dict) and messages.get("tool_calls"):
+                return [
+                    {
+                        "id": call.get("id"),
+                        "type": call.get("type"),
+                        "details": {
+                            "name": call.get("function", {}).get("name"),
+                            "arguments": call.get("function", {}).get("arguments")
+                        }
+                    }
+                    for call in messages["tool_calls"]
+                ]
+
+            return []
+
+        return None
 
         return None
 
@@ -184,16 +240,29 @@ class Gentoro:
                 tool_calls.extend(extracted_tool_calls)
 
             filtered_tool_calls = []
+            if self.config.provider == Providers.LANGCHAIN:
+                for tool_call in tool_calls:
+                    # Ensure structure is valid: dict with 'details' as a dict
+                    for call in tool_calls:
+                        filtered_tool_calls.append({
+                            'id': call['id'],
+                            'type': 'function',
+                            'details': {
+                                'name': call['name'],
+                                'arguments': json.dumps(call['args'])  # serialize args dict
+                            }
+                        })
 
-            for tool_call in tool_calls:
-                if isinstance(tool_call, dict) and "details" in tool_call and isinstance(tool_call["details"], dict):
-                    # Ensure arguments exist and are in dictionary format before serializing
-                    if "arguments" in tool_call["details"]:
-                        if isinstance(tool_call["details"]["arguments"], dict):
-                            tool_call["details"]["arguments"] = json.dumps(
-                                tool_call["details"]["arguments"])
+            else:
+                for tool_call in tool_calls:
+                    if isinstance(tool_call, dict) and "details" in tool_call and isinstance(tool_call["details"], dict):
+                        # Ensure arguments exist and are in dictionary format before serializing
+                        if "arguments" in tool_call["details"]:
+                            if isinstance(tool_call["details"]["arguments"], dict):
+                                tool_call["details"]["arguments"] = json.dumps(
+                                    tool_call["details"]["arguments"])
 
-                    filtered_tool_calls.append(tool_call)
+                        filtered_tool_calls.append(tool_call)
             tool_calls = filtered_tool_calls
             # Validate message sequence before sending request
             # Ensure assistant message with tool_calls exists
@@ -219,11 +288,19 @@ class Gentoro:
                     }
 
             # Prepare request payload
-            request_content = {
-                "context": {"bridgeUid": bridge_uid, "messages": messages},
-                "metadata": self.metadata,
-                "toolCalls": tool_calls
-            }
+            if self.config.provider == Providers.LANGCHAIN:
+                messages = self.convert_message_list_with_ai(messages=messages)
+                request_content = {
+                    "context": {"bridgeUid": bridge_uid, "messages": messages},
+                    "metadata": self.metadata,
+                    "toolCalls": tool_calls
+                }
+            else:
+                request_content = {
+                    "context": {"bridgeUid": bridge_uid, "messages": messages},
+                    "metadata": self.metadata,
+                    "toolCalls": tool_calls
+                }
 
             # Send request
             result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
@@ -233,14 +310,63 @@ class Gentoro:
 
             return self.as_provider_tool_call_results(_tool_calls, result)
 
-            result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
-            return self.as_provider_tool_call_results(_tool_calls, result)
+            # result = self.transport.send_request(request_uri, request_content, headers=headers, method="POST")
+            # return self.as_provider_tool_call_results(_tool_calls, result)
             # if result and "results" in result:
             #     return result["results"]
             # return None
         except Exception as e:
             print(f"Error running tools: {e},tool_calls:{tool_calls}")
             return None
+
+    def convert_message_list_with_ai(self, messages):
+        """
+        Converts an AIMessage within a message list to API-compatible format,
+        while keeping all other messages intact.
+        """
+        converted_messages = []
+        for msg in messages:
+            if isinstance(msg, AIMessage):
+                # Convert AIMessage to API-friendly format
+                tool_calls = msg.additional_kwargs.get("tool_calls", [])
+                converted_tool_calls = [
+                    {
+                        "id": call.get("id"),
+                        "type": "tool_call",
+                        "name": call.get("function", {}).get("name"),
+                        "args": json.loads(call.get("function", {}).get("arguments", "{}"))
+                    }
+                    for call in tool_calls
+                ]
+
+                usage_meta = getattr(msg, "usage_metadata", {})
+                input_details = usage_meta.get("input_token_details", {})
+                output_details = usage_meta.get("output_token_details", {})
+
+                converted_messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": converted_tool_calls,
+                    "usage_metadata": {
+                        "input_tokens": usage_meta.get("input_tokens", 0),
+                        "output_tokens": usage_meta.get("output_tokens", 0),
+                        "total_tokens": usage_meta.get("total_tokens", 0),
+                        "input_token_details": {
+                            "audio": input_details.get("audio", 0),
+                            "cache_read": input_details.get("cache_read", 0)
+                        },
+                        "output_token_details": {
+                            "audio": output_details.get("audio", 0),
+                            "reasoning": output_details.get("reasoning", 0)
+                        }
+                    }
+                })
+            else:
+                # Keep original message unchanged
+                converted_messages.append(msg)
+
+        return converted_messages
+
 
     def as_provider_tool_call_results(self, tool_calls: Union[List[Dict], ChatCompletion], results: Dict) -> Union[
         List[Dict], List[ChatCompletionToolMessageParam]]:
@@ -281,6 +407,18 @@ class Gentoro:
                 messages.extend(tool_calls)
             messages.extend(results["results"])
 
+        elif self.config.provider == Providers.LANGCHAIN:
+            # Assuming LangChain tool_calls is a list of dicts and results is similar
+            if isinstance(tool_calls, list):
+                messages.extend(tool_calls)
+
+            for result in results.get("results", []):
+                if result.get("type") == ExecResultType.EXEC_OUTPUT:
+                    messages.append(ToolMessage(tool_call_id=result["toolCallId"],content=result["data"]["content"]))
+                elif result.get("type") == ExecResultType.ERROR:
+                    messages.append(ToolMessage(tool_call_id=result["toolCallId"], content= f"Tool execution failed:\n```{result['data']['message']}```"))
+                else:
+                    raise ValueError(f"Unknown result type in LangChain: {result.get('type')}")
         return messages
 
     def convert_message_to_dict(self, message: ChatCompletionMessage) -> Dict:

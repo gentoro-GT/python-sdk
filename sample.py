@@ -15,7 +15,7 @@ _openAI = openai.OpenAI()
 MODEL = 'gpt-4o-mini'
 
 # Initial messages to OpenAI
-messages = [{"role": "user", "content": "list 10 of my slack channels"}]
+messages = [{"role": "user", "content": "how is the weather in new york?"}]
 
 # Send message, along with available tools to OpenAI
 openai_response = _openAI.chat.completions.create(

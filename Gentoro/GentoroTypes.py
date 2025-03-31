@@ -8,6 +8,7 @@ class Providers(str, Enum):
     OPENAI_ASSISTANTS = 'openai_assistants'
     VERCEL = 'vercel'
     GENTORO = 'gentoro'
+    LANGCHAIN = 'langchain'
 
 class AuthenticationScope(str, Enum):
     METADATA = 'metadata'
