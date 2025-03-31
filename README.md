@@ -10,7 +10,7 @@ This SDK is compatible with **Python >= 3.10**.
 To get started with the SDK, install it using **pip**:
 
 ```bash
-pip install Gentoro==0.1.8
+pip install Gentoro==0.1.9
 ```
 
 ## Authentication
